@@ -1,0 +1,22 @@
+# ESP-IDF 构建产物
+build/
+managed_components/
+dependencies.lock
+
+# 本机 IDE 配置（含串口号等个人设置）
+.vscode/
+.project
+.cproject
+
+# 本地备份 / 交接笔记（含本机绝对路径，不开源）
+sdkconfig.old
+HANDOFF.md
+
+# 从仓库剥离出去的未用第三方素材（LVGL demo、韩国字体等，仅本地保留）
+_attic/
+
+# 杂项
+*.log
+*.swp
+Thumbs.db
+.DS_Store

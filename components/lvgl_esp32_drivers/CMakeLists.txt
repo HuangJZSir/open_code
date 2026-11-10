@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "bsp_backlight.c"
+        "bsp_i2c.c"
+        "bsp_lcd.c"
+        "i2c_bus.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        driver
+        esp_common
+        log
+        lvgl_touch
+        esp_lcd
+)
