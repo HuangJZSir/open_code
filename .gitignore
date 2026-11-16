@@ -3,19 +3,27 @@ build/
 managed_components/
 dependencies.lock
 
+# 本机 sdkconfig（含天气 API Key 等私密配置，不入库）
+sdkconfig
+sdkconfig.old
+
 # 本机 IDE 配置（含串口号等个人设置）
 .vscode/
 .project
 .cproject
 
-# 本地备份 / 交接笔记（含本机绝对路径，不开源）
-sdkconfig.old
+# 本机备份 / 交接笔记（含本机绝对路径）
 HANDOFF.md
-
-# 从仓库剥离出去的未用第三方素材（LVGL demo、韩国字体等，仅本地保留）
 _attic/
+_export/
 
-# 杂项
+# 固件与编译中间产物
+*.bin
+*.elf
+*.map
+*.o
+
+# 杂物
 *.log
 *.swp
 Thumbs.db

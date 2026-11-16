@@ -28,11 +28,17 @@
 LV_FONT_DECLARE(ui_font_16)
 LV_FONT_DECLARE(ui_font_24)
 LV_FONT_DECLARE(ui_font_32)
+LV_FONT_DECLARE(ui_font_digit)
+LV_FONT_DECLARE(ui_font_sec)
+LV_FONT_DECLARE(ui_font_mid)
 LV_FONT_DECLARE(ui_font_cjk24)
 
 #define UI_FONT_SMALL &ui_font_16
 #define UI_FONT_TEXT  &ui_font_24
 #define UI_FONT_BIG   &ui_font_32
+#define UI_FONT_DIGIT &ui_font_digit
+#define UI_FONT_SEC   &ui_font_sec
+#define UI_FONT_MID   &ui_font_mid
 #define UI_FONT_NAME  &ui_font_cjk24
 #define UI_FONT_CLOCK &lv_font_montserrat_36
 #define UI_FONT_NUM   &lv_font_montserrat_22

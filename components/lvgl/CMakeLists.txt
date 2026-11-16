@@ -71,6 +71,7 @@ idf_component_register(
         "src/extra/layouts/flex"
         "src/extra/layouts/grid"
         "src/extra/libs/sjpg"
+        "src/extra/libs/png"
         "src/extra/themes"
         "src/extra/themes/basic"
         "src/extra/themes/default"

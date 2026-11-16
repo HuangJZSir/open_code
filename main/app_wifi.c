@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "app_settings.h"
+#include "app_dns.h"
+#include "app_time.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -83,6 +85,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         s_connected = true;
         s_connecting = false;
         ESP_LOGI(TAG, "sta ip %s", s_ip);
+        app_time_start_sntp();
         return;
     }
     if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
@@ -188,6 +191,8 @@ esp_err_t app_wifi_init(void)
 
     s_started = true;
     ESP_LOGI(TAG, "ap ssid %s pass %s url %s", s_ap_ssid, s_ap_pass, APP_WIFI_AP_URL);
+
+    app_dns_start();
 
     if (cfg->sta_ssid[0] != '\0') {
         app_wifi_sta_apply();

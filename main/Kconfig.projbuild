@@ -19,3 +19,34 @@ menu "RGB Driver Configuration"
             Enable this option, the example will use a pair of semaphores to avoid the tearing effect.
             Note, if the Double Frame Buffer is used, then we can also avoid the tearing effect without the lock.
 endmenu
+
+menu "Weather (QWeather)"
+    config APP_WEATHER_ENABLE
+        bool "Enable weather"
+        default y
+        help
+            Fetch current weather from QWeather and show it on the launcher.
+
+    config APP_WEATHER_KEY
+        string "QWeather API key"
+        default ""
+        help
+            API key of your QWeather account (dev console -> project -> key).
+
+    config APP_WEATHER_HOST
+        string "QWeather API host"
+        default "devapi.qweather.com"
+        help
+            Dedicated API host of your account, for example abcxyz.re.qweatherapp.com.
+
+    config APP_WEATHER_LOCATION
+        string "City name or LocationID"
+        default "101010100"
+        help
+            LocationID (for example 101010100 for Beijing) or a city name.
+
+    config APP_WEATHER_INTERVAL_MIN
+        int "Refresh interval (minutes)"
+        default 30
+        range 5 720
+endmenu

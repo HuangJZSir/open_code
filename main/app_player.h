@@ -37,6 +37,7 @@ uint8_t app_player_volume(void);
 void app_player_test_tone(void);
 
 app_player_state_t app_player_state(void);
+bool app_player_last_oom(void);
 uint32_t app_player_index(void);
 uint32_t app_player_position_ms(void);
 uint32_t app_player_total_ms(void);

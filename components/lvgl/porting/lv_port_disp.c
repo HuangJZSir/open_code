@@ -17,8 +17,11 @@
  * They differ only in refresh granularity and in who owns the LVGL buffers.
  *
  * UI_LCD_PARTIAL_REFRESH 1 (default) - the reference firmware's architecture:
- *   single PSRAM frame buffer (no double_fb), two 800x480 PSRAM draw buffers
- *   owned by LVGL, full_refresh = false. LVGL renders and pushes only the
+ *   single PSRAM frame buffer (no double_fb), one 800x480 PSRAM draw buffer
+ *   owned by LVGL, full_refresh = false. The flush is synchronous, so a second
+ *   draw buffer would only idle while the first one is already free; its 768 kB
+ *   are handed to esp_video_render, which has to allocate its own frame buffer
+ *   when the panel provides just one. LVGL renders and pushes only the
  *   damaged rectangle, so a keyboard key press copies ~6 kB instead of a whole
  *   800x480 frame - that is what makes typing feel instant.
  *
@@ -259,18 +262,10 @@ void lv_port_disp_init(void)
     // initialize LVGL draw buffers
     lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LCD_WIDTH * LCD_HEIGHT);
 #else
-    ESP_LOGI(TAG, "Allocate separate LVGL draw buffers from PSRAM");
-    /* Same shape as the reference firmware (config.h: BUFFER_LINES 480): two
-     * full-screen draw buffers in PSRAM. A small damaged area is rendered into
-     * them and flushed on its own, while a full page change (tab switch) still
-     * needs a single pass instead of being chopped into chunks.
-     * Cost: 2 x 768 kB of PSRAM. */
+    ESP_LOGI(TAG, "Allocate one LVGL draw buffer from PSRAM");
     const uint16_t fact = LCD_HEIGHT;
-    buf1 = heap_caps_malloc(LCD_WIDTH * fact * sizeof(lv_color_t), MALLOC_CAP_SPIRAM); // MALLOC_CAP_SPIRAM
+    buf1 = heap_caps_malloc(LCD_WIDTH * fact * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
     assert(buf1);
-    buf2 = heap_caps_malloc(LCD_WIDTH * fact * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
-    assert(buf2);
-    // initialize LVGL draw buffers
     lv_disp_draw_buf_init(&disp_buf, buf1, buf2, LCD_WIDTH * fact);
 #endif // !UI_LCD_PARTIAL_REFRESH
 

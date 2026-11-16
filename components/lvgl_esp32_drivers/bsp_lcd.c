@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file bsp_lcd.c
  * @brief LCD initialize and basic operator.
  * @version 0.1
@@ -18,6 +18,8 @@
  *      See the License for the specific language governing permissions and
  *      limitations under the License.
  */
+
+#include <string.h>
 
 #include "bsp_lcd.h"
 #include "bsp_backlight.h"

@@ -49,6 +49,7 @@ main/
   app_settings.c    NVS 持久化配置
   app_time.c        RTC / 时钟
   app_bus.c         跨模块事件总线
+  app_cast.c        JPEG 投屏接收与解码显示
   ui/               launcher / 音乐 / 设置 / 导航 / 主题 / 图标位图
   fonts/            位图字体（由 tools/gen_font.ps1 生成）
 components/         第三方组件（LVGL、屏幕驱动、预编译音频解码库），见 THIRD_PARTY_NOTICES.md
@@ -56,6 +57,8 @@ tools/
   gen_font.ps1      由系统字体生成 LVGL 位图字体
   gen_icons.ps1     程序化生成 48×48 UI 图标
   check_encoding.ps1 检查源文件编码（UTF-8 无 BOM / 无全角符号）
+  send_screen.ps1   把 PC 屏幕推送到设备（Windows）
+  send_screen.py    同上，跨平台 Python 版本
 partitions.csv      factory 5M + storage 2M(fat) + kids 8M(fat)
 ```
 
@@ -95,6 +98,58 @@ idf.py -p COMx flash monitor
 | POST | `/api/control` | 播放控制 |
 | POST | `/api/upload` | 上传文件到 SD 卡 |
 | POST | `/api/delete` | 删除文件 |
+| POST | `/api/cast` | 请求体为 JPEG，解码后全屏显示 |
+| POST | `/api/cast/stop` | 退出投屏，返回桌面 |
+
+## 手机投屏
+
+> **该功能当前默认关闭**：`main/app_cast.h` 里的 `APP_CAST_ENABLE` 为 `0`，控制台不会显示按钮、
+> `/api/cast` 也不注册。改成 `1` 重新编译即可启用。
+
+控制台页面里有一个「**手机拍照投屏**」按钮：点了会调起手机系统相机，拍照后自动缩到
+640×480 并上传到设备，设备全屏显示这张照片。
+
+```text
+手机浏览器 ──拍照──> canvas 缩图 ──JPEG──> POST /api/cast ──TJpgDec──> RGB 屏
+```
+
+使用步骤：
+
+1. 手机连设备热点（`MusicBox-XXXX`）或与设备同局域网
+2. 浏览器打开 `http://192.168.4.1`
+3. 点「手机拍照投屏」→ 用系统相机拍一张 → 状态栏显示「已投屏 640×480」
+4. 触摸设备屏幕任意位置，或点网页上的「退出投屏」，设备回到桌面
+
+### 为什么是「拍照」而不是实时视频流
+
+浏览器要连续读取摄像头必须调用 `getUserMedia()`，而该接口**只在安全上下文可用**
+（HTTPS、localhost 或 file://）。`http://192.168.4.1` 不满足条件，Android Chrome 上
+`navigator.mediaDevices` 直接是 `undefined`，iOS Safari 同样拒绝，自签名 HTTPS 也无解。
+所以这里改用 `<input type="file" capture="environment">` 调起系统相机——它不经过
+`getUserMedia`，两个平台都能用，也不需要证书。代价是"拍一张传一张"，不是连续视频。
+
+### 电脑端（可选）
+
+想知道连续画面能跑多少帧，可以用 PC 发送端：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\send_screen.ps1 -Device 192.168.4.1 -Width 320 -Fps 8
+```
+
+或 Python 版（需 `pip install mss pillow requests`）：
+
+```bash
+python tools/send_screen.py --host 192.168.4.1 --width 320 --fps 8
+```
+
+实测 320 宽约 8–12 fps，640 宽约 2–5 fps（瓶颈是软解和 WiFi 吞吐）。
+
+### 传输协议
+
+`POST /api/cast` 的请求体就是一张完整 JPEG，上限 **128 KB**。设备端会按需自动降采样
+（1/2、1/4、1/8）把解码结果控制在 640×480 以内，再最近邻放大、黑边居中，然后直接写进
+面板帧缓冲。所有缓冲**首帧才申请**，不占开机内存（典型 320 宽画面约 240 KB PSRAM）。
+超出上限返回 413，内存不足返回 503。
 
 ## 许可证
 

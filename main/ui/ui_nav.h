@@ -8,6 +8,11 @@ typedef enum {
     UI_SCREEN_HOME = 0,
     UI_SCREEN_MUSIC,
     UI_SCREEN_SETTINGS,
+    UI_SCREEN_VIDEO,
+    UI_SCREEN_ALBUM,
+    UI_SCREEN_FILES,
+    UI_SCREEN_CLOCK,
+    UI_SCREEN_CALC,
     UI_SCREEN_COUNT,
 } ui_screen_t;
 

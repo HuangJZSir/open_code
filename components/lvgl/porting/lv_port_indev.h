@@ -63,6 +63,10 @@ void lv_port_indev_set_tap_cb(lv_port_indev_tap_cb_t cb);
 /* Called on every finger-down, before the coordinates are read. The power
  * manager uses it to notice that the user is still there. */
 void lv_port_indev_set_activity_cb(lv_port_indev_activity_cb_t cb);
+
+/* Reads the touch controller once without going through lv_task_handler().
+ * Needed while the UI task is parked and another module owns the panel. */
+bool lv_port_indev_poll_touch(lv_coord_t *x, lv_coord_t *y);
 /**********************
  *      MACROS
  **********************/

@@ -106,6 +106,20 @@ static void button_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data);
 static int8_t button_get_pressed_id(void);
 static bool button_is_pressed(uint8_t id);
 
+bool lv_port_indev_poll_touch(lv_coord_t *x, lv_coord_t *y)
+{
+    lv_indev_data_t data = { 0 };
+
+    touchpad_read(NULL, &data);
+    if(x != NULL) {
+        *x = data.point.x;
+    }
+    if(y != NULL) {
+        *y = data.point.y;
+    }
+    return data.state == LV_INDEV_STATE_PR;
+}
+
 /**********************
  *  STATIC VARIABLES
  **********************/
@@ -341,6 +355,15 @@ static void touchpad_init(void)
 }
 
 /*Will be called by the library to read the touchpad*/
+static bool touch_int_low(void)
+{
+#ifdef GPIO_TOUCH_INT
+    return gpio_get_level((gpio_num_t)GPIO_TOUCH_INT) == 0;
+#else
+    return false;
+#endif
+}
+
 static void touchpad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 {
     static lv_coord_t last_x = 0;
@@ -352,7 +375,7 @@ static void touchpad_read(lv_indev_drv_t * indev_drv, lv_indev_data_t * data)
 
     /* Interrupt driven: only talk to the controller when its INT line fired or
      * when the fallback poll timer elapsed. */
-    should_poll = touch_irq_pending ||
+    should_poll = touch_irq_pending || touch_int_low() ||
                   ((int32_t)(now - touch_next_poll_ms) >= -(int32_t)TOUCH_POLL_TOLERANCE_MS);
 
     if(should_poll) {

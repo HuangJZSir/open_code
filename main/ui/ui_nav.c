@@ -4,11 +4,18 @@
 #include <stddef.h>
 
 #include "app_bus.h"
+#include "app_time.h"
 #include "icons.h"
 #include "launcher.h"
+#include "ui_album.h"
+#include "ui_calc.h"
+#include "ui_clock.h"
+#include "ui_features.h"
+#include "ui_files.h"
 #include "ui_music.h"
 #include "ui_settings.h"
 #include "ui_theme.h"
+#include "ui_video.h"
 
 static lv_obj_t *s_parent;
 static lv_obj_t *s_screens[UI_SCREEN_COUNT];
@@ -130,6 +137,20 @@ void ui_nav_show(ui_screen_t screen)
             s_screens[screen] = ui_music_create(s_parent);
         } else if (screen == UI_SCREEN_SETTINGS) {
             s_screens[screen] = ui_settings_create(s_parent);
+#if UI_VIDEO_ENABLE
+        } else if (screen == UI_SCREEN_VIDEO) {
+            s_screens[screen] = ui_video_create(s_parent);
+#endif
+        } else if (screen == UI_SCREEN_ALBUM) {
+            s_screens[screen] = ui_album_create(s_parent);
+        } else if (screen == UI_SCREEN_FILES) {
+            s_screens[screen] = ui_files_create(s_parent);
+        } else if (screen == UI_SCREEN_CLOCK) {
+            s_screens[screen] = ui_clock_create(s_parent);
+#if UI_CALC_ENABLE
+        } else if (screen == UI_SCREEN_CALC) {
+            s_screens[screen] = ui_calc_create(s_parent);
+#endif
         }
         if (s_screens[screen] == NULL) {
             return;
@@ -154,6 +175,20 @@ void ui_nav_show(ui_screen_t screen)
         ui_music_enter();
     } else if (screen == UI_SCREEN_SETTINGS) {
         ui_settings_enter();
+#if UI_VIDEO_ENABLE
+    } else if (screen == UI_SCREEN_VIDEO) {
+        ui_video_enter();
+#endif
+    } else if (screen == UI_SCREEN_ALBUM) {
+        ui_album_enter();
+    } else if (screen == UI_SCREEN_FILES) {
+        ui_files_enter();
+    } else if (screen == UI_SCREEN_CLOCK) {
+        ui_clock_enter();
+#if UI_CALC_ENABLE
+    } else if (screen == UI_SCREEN_CALC) {
+        ui_calc_enter();
+#endif
     } else {
         launcher_refresh();
     }
@@ -191,7 +226,11 @@ void ui_nav_pump(void)
 
     while (app_bus_pop(&evt)) {
         if (evt.type == APP_EVT_CLIENT_CHANGED) {
-            ui_nav_toast("手机已连接");
+            if (app_time_valid()) {
+                ui_nav_toast("手机已连接");
+            } else {
+                ui_nav_toast("手机已连接，打开 192.168.4.1 校时");
+            }
         }
     }
 }

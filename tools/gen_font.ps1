@@ -39,14 +39,15 @@ function Get-GbkLevel1 {
 }
 
 function Render-Font {
-    param([int]$Size, [System.Collections.Generic.SortedSet[int]]$Codes, [string]$Name, [string]$Path)
+    param([int]$Size, [System.Collections.Generic.SortedSet[int]]$Codes, [string]$Name, [string]$Path,
+          [string]$Style = "Regular")
 
-    $style = [System.Drawing.FontStyle]::Regular
+    $style = [System.Drawing.FontStyle]::$Style
     $family = New-Object System.Drawing.FontFamily($Family)
     $font = New-Object System.Drawing.Font($family, [float]$Size, $style, [System.Drawing.GraphicsUnit]::Pixel)
 
-    $canvasW = 96
-    $canvasH = 96
+    $canvasW = [math]::Max(96, [int]($Size * 2))
+    $canvasH = [math]::Max(96, [int]($Size * 2.4))
     $bmp = New-Object System.Drawing.Bitmap($canvasW, $canvasH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $gfx = [System.Drawing.Graphics]::FromImage($bmp)
     $gfx.Clear([System.Drawing.Color]::Black)
@@ -165,27 +166,35 @@ function Render-Font {
 
     $cjk = @()
     foreach ($c in $codesOut) { if ($c -gt 127) { $cjk += $c } }
-    $cjkMin = ($cjk | Measure-Object -Minimum).Minimum
-    $cjkMax = ($cjk | Measure-Object -Maximum).Maximum
-    if (($cjkMax - $cjkMin) -gt 65535) { throw "sparse cmap range exceeds uint16" }
+    $cjkMin = 0
+    $cjkMax = 0
+    if ($cjk.Count -gt 0) {
+        $cjkMin = ($cjk | Measure-Object -Minimum).Minimum
+        $cjkMax = ($cjk | Measure-Object -Maximum).Maximum
+        if (($cjkMax - $cjkMin) -gt 65535) { throw "sparse cmap range exceeds uint16" }
 
-    [void]$sb.AppendLine("static const uint16_t unicode_list_1[] = {")
-    $line = "    "
-    $count = 0
-    foreach ($c in $cjk) {
-        $line += ("0x" + ([int]($c - $cjkMin)).ToString("x") + ",")
-        $count++
-        if ($count % 12 -eq 0) { [void]$sb.AppendLine($line); $line = "    " }
+        [void]$sb.AppendLine("static const uint16_t unicode_list_1[] = {")
+        $line = "    "
+        $count = 0
+        foreach ($c in $cjk) {
+            $line += ("0x" + ([int]($c - $cjkMin)).ToString("x") + ",")
+            $count++
+            if ($count % 12 -eq 0) { [void]$sb.AppendLine($line); $line = "    " }
+        }
+        if ($line.Trim().Length -gt 0) { [void]$sb.AppendLine($line) }
+        [void]$sb.AppendLine("};")
+        [void]$sb.AppendLine("")
     }
-    if ($line.Trim().Length -gt 0) { [void]$sb.AppendLine($line) }
-    [void]$sb.AppendLine("};")
-    [void]$sb.AppendLine("")
     [void]$sb.AppendLine("static const lv_font_fmt_txt_cmap_t cmaps[] = {")
     $asciiCount = 0
     foreach ($c0 in $codesOut) { if ($c0 -lt 127) { $asciiCount++ } }
     $cjkStart = 1 + $asciiCount
-    [void]$sb.AppendLine("    {.range_start = 32, .range_length = $($asciiCount - 1), .glyph_id_start = 1, .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY},")
-    [void]$sb.AppendLine("    {.range_start = $cjkMin, .range_length = $($cjkMax - $cjkMin), .glyph_id_start = $cjkStart, .unicode_list = unicode_list_1, .glyph_id_ofs_list = NULL, .list_length = $($cjk.Count), .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY}")
+    if ($cjk.Count -gt 0) {
+        [void]$sb.AppendLine("    {.range_start = 32, .range_length = $($asciiCount - 1), .glyph_id_start = 1, .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY},")
+        [void]$sb.AppendLine("    {.range_start = $cjkMin, .range_length = $($cjkMax - $cjkMin), .glyph_id_start = $cjkStart, .unicode_list = unicode_list_1, .glyph_id_ofs_list = NULL, .list_length = $($cjk.Count), .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY}")
+    } else {
+        [void]$sb.AppendLine("    {.range_start = 32, .range_length = $($asciiCount - 1), .glyph_id_start = 1, .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY}")
+    }
     [void]$sb.AppendLine("};")
     [void]$sb.AppendLine("")
     [void]$sb.AppendLine("static const lv_font_fmt_txt_dsc_t font_dsc = {")
@@ -194,7 +203,7 @@ function Render-Font {
     [void]$sb.AppendLine("    .cmaps = cmaps,")
     [void]$sb.AppendLine("    .kern_dsc = NULL,")
     [void]$sb.AppendLine("    .kern_scale = 0,")
-    [void]$sb.AppendLine("    .cmap_num = 2,")
+    [void]$sb.AppendLine("    .cmap_num = $(if ($cjk.Count -gt 0) { 2 } else { 1 }),")
     [void]$sb.AppendLine("    .bpp = 4,")
     [void]$sb.AppendLine("    .kern_classes = 0,")
     [void]$sb.AppendLine("    .bitmap_format = 0,")
@@ -234,6 +243,13 @@ Write-Output ("ui codes: " + $codes.Count)
 Render-Font -Size 16 -Codes $codes -Name "ui_font_16" -Path (Join-Path $OutDir "ui_font_16.c")
 Render-Font -Size 24 -Codes $codes -Name "ui_font_24" -Path (Join-Path $OutDir "ui_font_24.c")
 Render-Font -Size 32 -Codes $codes -Name "ui_font_32" -Path (Join-Path $OutDir "ui_font_32.c")
+
+$ascii = New-Object System.Collections.Generic.SortedSet[int]
+for ($c = 32; $c -le 58; $c++) { [void]$ascii.Add($c) }
+[void]$ascii.Add(176)
+Render-Font -Size 150 -Codes $ascii -Name "ui_font_digit" -Path (Join-Path $OutDir "ui_font_digit.c") -Style "Bold"
+Render-Font -Size 64 -Codes $ascii -Name "ui_font_sec" -Path (Join-Path $OutDir "ui_font_sec.c")
+Render-Font -Size 96 -Codes $ascii -Name "ui_font_mid" -Path (Join-Path $OutDir "ui_font_mid.c") -Style "Bold"
 
 if ($Cjk) {
     $gbk = Get-GbkLevel1

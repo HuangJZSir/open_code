@@ -19,6 +19,8 @@
  *      limitations under the License.
  */
 
+#include <string.h>
+
 #include "gt911.h"
 
 static const char *TAG = "gt911";
@@ -80,6 +82,14 @@ esp_err_t gt911_init(void)
      
     if(ret == ESP_OK) ESP_LOGI(TAG, "gt911 init ok");
     else ESP_LOGW(TAG, "gt911 reset/config reported errors, continuing");
+
+    {
+        uint8_t clear = 0;
+
+        gt911_write_bytes(GT_GSTID_REG, 1, &clear);
+        ESP_LOGI(TAG, "status register cleared, INT released");
+    }
+
     return ESP_OK;
 }
 
@@ -100,20 +110,24 @@ static esp_err_t gt911_get_touch_points_num(uint8_t *touch_points_num)
 
 esp_err_t gt911_read_pos(uint8_t *touch_points_num, uint16_t *x, uint16_t *y)
 {
-    static uint8_t data[4];
+    uint8_t data[4] = {0};
+    uint8_t clear = 0;
+
+    *touch_points_num = 0;
 
     if(ESP_OK == gt911_get_touch_points_num(touch_points_num))
     {
-        if (0 == *touch_points_num) {
-        } else {
-            gt911_read_bytes(GT_TP1_REG, 4, data);
-            *x = ((data[1] & 0x0f) << 8) + data[0];
-            *y = ((data[3] & 0x0f) << 8) + data[2];
+        if (0 != *touch_points_num) {
+            if (ESP_OK != gt911_read_bytes(GT_TP1_REG, 4, data)) {
+                *touch_points_num = 0;
+            } else {
+                *x = (uint16_t)(((uint16_t)(data[1] & 0x0f) << 8) + data[0]);
+                *y = (uint16_t)(((uint16_t)(data[3] & 0x0f) << 8) + data[2]);
+            }
         }
-
-        data[0] = 0;
-        gt911_write_bytes(GT_GSTID_REG, 1, data);
     }
+
+    gt911_write_bytes(GT_GSTID_REG, 1, &clear);
 
     return ESP_OK;
 }

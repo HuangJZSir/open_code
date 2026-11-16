@@ -25,7 +25,7 @@
 #define PLAYER_IN_SIZE      (32 * 1024)
 #define PLAYER_PCM_MIN      (16 * 1024)
 #define PLAYER_OUT_FRAMES   1024
-#define PLAYER_RING_FRAMES  (65536U)
+#define PLAYER_RING_FRAMES  (32768U)
 #define PLAYER_PREFILL      (16384U)
 #define PLAYER_WRITE_FRAMES 512
 #define PLAYER_TASK_STACK   (10 * 1024)
@@ -72,11 +72,14 @@ static uint32_t s_pcm_size;
 static int16_t s_out[PLAYER_OUT_FRAMES * 2];
 static uint32_t s_out_n;
 static int16_t *s_ring;
+static volatile bool s_release_req;
+static volatile bool s_open_active;
 static volatile uint32_t s_ring_head;
 static volatile uint32_t s_ring_tail;
 static volatile uint32_t s_pending_rate;
 static int16_t s_wbuf[PLAYER_WRITE_FRAMES * 2];
 static volatile bool s_need_prefill;
+static volatile bool s_last_oom;
 static uint32_t s_prefill_waits;
 static volatile uint32_t s_stat_dec_us;
 static volatile uint32_t s_stat_io_us;
@@ -402,6 +405,55 @@ static void player_close(void)
     }
 }
 
+static bool player_buffers_acquire(void)
+{
+    s_release_req = false;
+
+    if (s_ring == NULL) {
+        s_ring = heap_caps_malloc((size_t)PLAYER_RING_FRAMES * 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    if (s_in == NULL) {
+        s_in = heap_caps_malloc(PLAYER_IN_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_in == NULL) {
+            s_in = heap_caps_malloc(PLAYER_IN_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        }
+    }
+    if (s_pcm == NULL) {
+        s_pcm = heap_caps_malloc(PLAYER_PCM_MIN, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_pcm == NULL) {
+            s_pcm = heap_caps_malloc(PLAYER_PCM_MIN, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        }
+        s_pcm_size = (s_pcm != NULL) ? PLAYER_PCM_MIN : 0;
+    }
+
+    return (s_ring != NULL) && (s_in != NULL) && (s_pcm != NULL);
+}
+
+static void player_buffers_release(void)
+{
+    if (s_fp != NULL || s_dec != NULL || s_state == APP_PLAYER_PLAYING ||
+        s_state == APP_PLAYER_PAUSED) {
+        s_release_req = true;
+        return;
+    }
+    if (s_ring != NULL) {
+        heap_caps_free(s_ring);
+        s_ring = NULL;
+    }
+    if (s_in != NULL) {
+        heap_caps_free(s_in);
+        s_in = NULL;
+    }
+    if (s_pcm != NULL) {
+        heap_caps_free(s_pcm);
+        s_pcm = NULL;
+    }
+    s_pcm_size = 0;
+    s_ring_head = 0;
+    s_ring_tail = 0;
+    ESP_LOGI(TAG, "buffers released");
+}
+
 static void player_flush(void)
 {
     if (s_out_n == 0) {
@@ -555,6 +607,10 @@ static void player_out_task(void *arg)
         if (s_state != APP_PLAYER_PLAYING) {
             s_need_prefill = true;
             s_prefill_waits = 0;
+            if (s_release_req && !s_open_active) {
+                s_release_req = false;
+                player_buffers_release();
+            }
             vTaskDelay(1);
             continue;
         }
@@ -741,6 +797,20 @@ static void player_open(uint32_t index)
         return;
     }
 
+    s_open_active = true;
+    s_last_oom = false;
+    if (!player_buffers_acquire()) {
+        s_open_active = false;
+        player_close();
+        s_state = APP_PLAYER_STOPPED;
+        s_status = "内存不足";
+        s_last_oom = true;
+        ESP_LOGE(TAG, "buffers acquire failed: psram=%uKB internal=%uKB",
+                 (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
+                 (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+        return;
+    }
+
     if (stat(s_paths[index], &st) == 0) {
         s_bytes_total = (uint32_t)st.st_size;
     } else {
@@ -762,6 +832,7 @@ static void player_open(uint32_t index)
 
     s_state = APP_PLAYER_PLAYING;
     s_status = "播放中";
+    s_open_active = false;
     ESP_LOGI(TAG, "play %lu %s", (unsigned long)index, s_paths[index]);
 }
 
@@ -816,6 +887,7 @@ static void player_finish(bool failed)
             s_fail_count = 0;
             s_state = APP_PLAYER_STOPPED;
             s_status = "多首无法播放";
+            s_release_req = true;
             return;
         }
     } else {
@@ -826,6 +898,7 @@ static void player_finish(bool failed)
     if (next >= s_count) {
         s_state = APP_PLAYER_STOPPED;
         s_status = "播放完毕";
+        s_release_req = true;
         return;
     }
     player_open(next);
@@ -885,6 +958,7 @@ static void player_handle(const player_msg_t *msg)
         ring_reset();
         s_skipping = false;
         s_state = APP_PLAYER_STOPPED;
+        s_release_req = true;
         s_status = "已停止";
         break;
     case PLAYER_CMD_NEXT:
@@ -969,21 +1043,18 @@ esp_err_t app_player_init(void)
                                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     s_titles = heap_caps_malloc((size_t)APP_PLAYER_MAX_TRACKS * PLAYER_TITLE_LEN,
                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    s_in = heap_caps_malloc(PLAYER_IN_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (s_in == NULL) {
-        s_in = heap_caps_malloc(PLAYER_IN_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
-    s_pcm = heap_caps_malloc(PLAYER_PCM_MIN, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (s_pcm == NULL) {
-        s_pcm = heap_caps_malloc(PLAYER_PCM_MIN, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
-    s_ring = heap_caps_malloc((size_t)PLAYER_RING_FRAMES * 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    s_in = NULL;
+    s_pcm = NULL;
+    s_ring = NULL;
+    s_pcm_size = 0;
+    s_release_req = false;
+    s_open_active = false;
 
-    if (s_paths == NULL || s_titles == NULL || s_in == NULL || s_pcm == NULL || s_ring == NULL) {
+    if (s_paths == NULL || s_titles == NULL) {
         ESP_LOGE(TAG, "buffer alloc failed");
         return ESP_ERR_NO_MEM;
     }
-    s_pcm_size = PLAYER_PCM_MIN;
+    s_pcm_size = 0;
     s_ring_head = 0;
     s_ring_tail = 0;
     s_pending_rate = 0;
@@ -1141,6 +1212,11 @@ uint8_t app_player_volume(void)
 app_player_state_t app_player_state(void)
 {
     return (app_player_state_t)s_state;
+}
+
+bool app_player_last_oom(void)
+{
+    return s_last_oom;
 }
 
 uint32_t app_player_index(void)

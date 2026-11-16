@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file lv_port_fs_templ.c
  *
  */
@@ -9,6 +9,9 @@
 /*********************
  *      INCLUDES
  *********************/
+#include <dirent.h>
+#include <stdio.h>
+
 #include "lv_port_fs.h"
 #include "../../lvgl.h"
 
